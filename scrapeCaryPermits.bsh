@@ -18,8 +18,10 @@ import java.net.*;
 void printArgs() {
   print("");
   print("Usage:");
-  print("  scrapeCaryPermits [year(>=1993)|now] <offset> <limit>");
+  print("  scrapeCaryPermits [year(>=1993)|now] <offset:0> <limit:99999>");
   print("    - Specify 'now' to use today's date");
+  print("    - Data will be appended to data/cary_[year]_permits.csv");
+  print("    - Offset 0 will include a header row with column names");
   print("    - This script will resume automatically when a file exists");
   print("");
 }
@@ -75,7 +77,9 @@ String getNextRecord(CSVWriter writer) {
     if (!StringUtils.hasText(response)) {
       return ("ERROR - Response didn't have any content!");
     } else if (response.contains("Invalid application number")) {
-      return ("ERROR - Record not found");
+      return ("Finished - Record not found");
+    } else if (!response.contains("Status Detail")) {
+      return ("ERROR - Unexpected page content!");
     }
 
     // Get the Structure (if it exists)
@@ -146,7 +150,8 @@ String getNextRecord(CSVWriter writer) {
     // Append the content
     String[] entries = sb.toString().split("\n", -1);
     writer.writeNext(entries, true);
-    print(entries[0] + " " + entries[1] + " " + entries[3] + " -> " + entries[7] + (StringUtils.hasText(entries[14]) ? "(" + entries[14] + ")" : ""));
+    print("[" + entries[0] + "-" + entries[1] + "] " + entries[3] + " -> " + entries[7] + (StringUtils.hasText(entries[14]) ? " (" + entries[14] + ")" : ""));
+    writer.flush();
 
   } catch (SSLHandshakeException ssle) {
     return("ERROR - " + ssle.getMessage());
@@ -174,14 +179,6 @@ if (csvFile.exists() && permit == 1) {
   while ((thisLine = reader.readLine()) != null) {
     ++linesRead;
     String[] nextLine = thisLine.split("\",\"", -1);
-    /* Can uncomment if want to check the data...
-    if (nextLine.length < 15) {
-      print("");
-      print("Aborted, possible file corruption at line: " + linesRead + " columns: " + nextLine.length);
-      print("");
-      System.exit(2);
-    }
-    */
     if (nextLine[0].substring(1).equals(year)) {
       int thisPermitValue = Integer.parseInt(nextLine[1]);
       if (thisPermitValue > permit) {
@@ -192,14 +189,6 @@ if (csvFile.exists() && permit == 1) {
   if (permit > 1) {
     ++permit;
     print("Resuming... permit=" + permit + "; linesRead=" + linesRead);
-    /* Can uncomment...
-    if (permit != linesRead) {
-      print("");
-      print("Aborted, possible file corruption.");
-      print("");
-      System.exit(2);
-    }
-    */
   }
   reader.close();
 } else {
@@ -230,6 +219,7 @@ if (StringUtils.hasText(result)) {
 }
 
 print("");
-print(new Date());
+print(new Date() + "; records=" + (counter - 1));
+print("");
 
 System.exit(0);
