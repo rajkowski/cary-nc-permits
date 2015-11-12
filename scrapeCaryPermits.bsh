@@ -1,0 +1,235 @@
+#!/bin/sh
+//usr/bin/true; exec java -classpath .:lib/bsh-2.1.8.jar:lib/commons-logging-1.2.jar:lib/opencsv-3.6.jar:lib/htmlcleaner-2.2.1.jar:lib/concursive-commons-20151110.jar bsh.Interpreter "$0" "$@"
+
+import com.concursive.commons.date.DateUtils;
+import com.concursive.commons.html.HTMLUtils;
+import com.concursive.commons.net.HTTPUtils;
+import com.concursive.commons.text.StringUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import com.opencsv.*;
+
+import java.io.IOException;
+import javax.net.ssl.SSLHandshakeException;
+import java.text.*;
+import java.util.*;
+import java.net.*;
+
+void printArgs() {
+  print("");
+  print("Usage:");
+  print("  scrapeCaryPermits [year(>=1993)|now] <offset> <limit>");
+  print("    - Specify 'now' to use today's date");
+  print("    - This script will resume automatically when a file exists");
+  print("");
+}
+
+// Validate the args
+if (bsh.args.length == 0) {
+  printArgs();
+  System.exit(0);
+}
+
+// Determine the year to process
+Calendar startCal1 = new GregorianCalendar();
+startCal1.setTimeInMillis(System.currentTimeMillis());
+String year = bsh.args[0].trim();
+if (year.equals("now")) {
+  year = String.valueOf(startCal1.get(Calendar.YEAR) + 1);
+}
+if (!StringUtils.hasText(year) || Integer.parseInt(year) < 1993) {
+  printArgs();
+  System.exit(2);
+}
+
+// Determine record offset to use
+int skip = 0;
+if (bsh.args.length > 1) {
+  skip = Integer.parseInt(bsh.args[1].trim());
+}
+int permit = (skip + 1);
+
+// Determine the max number of records to process
+int limit = 99999;
+if (bsh.args.length > 2) {
+  limit = Integer.parseInt(bsh.args[2].trim());
+}
+
+print("");
+print("Starting... start=" + DateUtils.getDateTimeString(startCal1) + "; year=" + year + "; skip=" + skip + "; limit=" + limit);
+
+String url = "https://click2gov.townofcary.org/Click2GovBP/Validate.jsp";
+
+String getNextRecord(CSVWriter writer) {
+  try {
+    Map params = new HashMap();
+    params.put("FunctionCode", "I");
+    params.put("errorJspPage", "SelectPermit");
+    params.put("jspPage", "StatusOptions");
+    params.put("ApplicationYear", year.substring(2, 4));
+    params.put("ApplicationNumber", String.valueOf(permit));
+    params.put("Submit.x", "29");
+    params.put("Submit.y", "9");
+
+    String response = HTTPUtils.post(url, params);
+    if (!StringUtils.hasText(response)) {
+      return ("ERROR - Response didn't have any content!");
+    } else if (response.contains("Invalid application number")) {
+      return ("ERROR - Record not found");
+    }
+
+    // Get the Structure (if it exists)
+    String structure = null;
+    int structureIndex = response.indexOf("&structDesc=");
+    if (structureIndex > -1) {
+      int structureEndIndex = response.indexOf("\"", structureIndex);
+      if (structureEndIndex > -1) {
+        structure = response.substring(structureIndex + 12, structureEndIndex).trim();
+      }
+    }
+
+    // Determine the content
+    response = HTMLUtils.htmlToText(response);
+    response = StringUtils.replace(response, "&nbsp;", " ");
+    String[] lines = response.split("\n");
+
+    // Just get the data
+    boolean isField = false;
+    StringBuilder sbHeaders = new StringBuilder();
+    if (permit == 1) {
+      sbHeaders.append("Year\n");
+      sbHeaders.append("Permit\n");
+    }
+
+    StringBuilder sb = new StringBuilder();
+    sb.append(year + "\n");
+    sb.append(permit + "\n");
+
+    for (String line : lines) {
+      line = line.trim();
+      if (!StringUtils.hasText(line)) {
+        continue;
+      }
+      if (line.equals("Status Detail")) {
+        continue;
+      }
+      if (line.equals("-->")) {
+        continue;
+      }
+      if (line.contains(":")) {
+        if (permit == 1) {
+          sbHeaders.append(line.substring(0, line.indexOf(":"))).append("\n");
+        }
+        if (isField) {
+          sb.append("").append("\n");
+        }
+        isField = true;
+        continue;
+      }
+      isField = false;
+      sb.append(line).append("\n");
+    }
+    // Add the structure field
+    if (StringUtils.hasText(structure)) {
+      sb.append(structure);
+    } else {
+      //sb.append("\n");
+    }
+
+    // Append the headers (on row 1)
+    if (permit == 1) {
+      sbHeaders.append("Structure Details");
+      String[] headers = sbHeaders.toString().split("\n");
+      writer.writeNext(headers, true);
+    }
+
+    // Append the content
+    String[] entries = sb.toString().split("\n", -1);
+    writer.writeNext(entries, true);
+    print(entries[0] + " " + entries[1] + " " + entries[3] + " -> " + entries[7] + (StringUtils.hasText(entries[14]) ? "(" + entries[14] + ")" : ""));
+
+  } catch (SSLHandshakeException ssle) {
+    return("ERROR - " + ssle.getMessage());
+  } catch (Exception e) {
+    return("ERROR - " + e.getMessage());
+  }
+  return null;
+}
+
+// Make sure the data directory exists
+File dataDir = new File("data");
+if (!dataDir.exists()) {
+  dataDir.mkdir();
+}
+
+// Set the file to use
+File csvFile = new File("data/cary_" + year + "_permits.csv");
+
+// If the file exists, scan for the highest permit number (CSVReader fails with this)
+if (csvFile.exists() && permit == 1) {
+  print("Checking... " + csvFile.getCanonicalPath());
+  FileInputStream fis = new FileInputStream(csvFile);
+  BufferedReader reader = new BufferedReader(new InputStreamReader(fis));
+  int linesRead = 0;
+  while ((thisLine = reader.readLine()) != null) {
+    ++linesRead;
+    String[] nextLine = thisLine.split("\",\"", -1);
+    /* Can uncomment if want to check the data...
+    if (nextLine.length < 15) {
+      print("");
+      print("Aborted, possible file corruption at line: " + linesRead + " columns: " + nextLine.length);
+      print("");
+      System.exit(2);
+    }
+    */
+    if (nextLine[0].substring(1).equals(year)) {
+      int thisPermitValue = Integer.parseInt(nextLine[1]);
+      if (thisPermitValue > permit) {
+        permit = thisPermitValue;
+      }
+    }
+  }
+  if (permit > 1) {
+    ++permit;
+    print("Resuming... permit=" + permit + "; linesRead=" + linesRead);
+    /* Can uncomment...
+    if (permit != linesRead) {
+      print("");
+      print("Aborted, possible file corruption.");
+      print("");
+      System.exit(2);
+    }
+    */
+  }
+  reader.close();
+} else {
+  print("Filename... " + csvFile.getCanonicalPath());
+}
+
+print("");
+
+// Write to a file...
+CSVWriter writer = new CSVWriter(new FileWriter(csvFile, true), ',');
+
+int counter = 0;
+String result = null;
+while (counter < limit) {
+  ++counter;
+  String result = getNextRecord(writer);
+  if (result != null) {
+    print(result);
+    break;
+  }
+  ++permit;
+}
+writer.close();
+
+if (StringUtils.hasText(result)) {
+  print("");
+  print("Last result: " + result);
+}
+
+print("");
+print(new Date());
+
+System.exit(0);
