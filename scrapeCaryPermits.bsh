@@ -150,7 +150,7 @@ String getNextRecord(CSVWriter writer) {
     // Append the content
     String[] entries = sb.toString().split("\n", -1);
     writer.writeNext(entries, true);
-    print("[" + entries[0] + "-" + entries[1] + "] " + entries[3] + " -> " + entries[7] + (StringUtils.hasText(entries[15]) ? " (" + entries[15] + ")" : ""));
+    print("[" + entries[0] + "-" + entries[1] + "] " +  entries[4] + " " + entries[3] + " -> " + entries[7] + (StringUtils.hasText(entries[15]) ? " (" + entries[15] + ")" : ""));
     writer.flush();
 
   } catch (SSLHandshakeException ssle) {
