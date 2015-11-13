@@ -33,10 +33,12 @@ if (bsh.args.length == 0) {
 }
 
 // Determine the year to process
+boolean skipPastDeletedRecords = true;
 Calendar startCal1 = new GregorianCalendar();
 startCal1.setTimeInMillis(System.currentTimeMillis());
 String year = bsh.args[0].trim();
 if (year.equals("now")) {
+  skipPastDeletedRecords = false;
   year = String.valueOf(startCal1.get(Calendar.YEAR) + 1);
 }
 if (!StringUtils.hasText(year) || Integer.parseInt(year) < 1993) {
@@ -58,7 +60,7 @@ if (bsh.args.length > 2) {
 }
 
 print("");
-print("Starting... start=" + DateUtils.getDateTimeString(startCal1) + "; year=" + year + "; skip=" + skip + "; limit=" + limit);
+print("Starting... start=" + DateUtils.getDateTimeString(startCal1) + "; year=" + year + "; skip=" + skip + "; limit=" + limit + "; skipMissingRecords=" + skipPastDeletedRecords);
 
 String url = "https://click2gov.townofcary.org/Click2GovBP/Validate.jsp";
 
@@ -173,6 +175,7 @@ File csvFile = new File("data/cary_" + year + "_permits.csv");
 // If the file exists, scan for the highest permit number (CSVReader fails with this)
 if (csvFile.exists() && permit == 1) {
   print("Checking... " + csvFile.getCanonicalPath());
+  String dateValue = null;
   FileInputStream fis = new FileInputStream(csvFile);
   BufferedReader reader = new BufferedReader(new InputStreamReader(fis));
   int linesRead = 0;
@@ -183,12 +186,13 @@ if (csvFile.exists() && permit == 1) {
       int thisPermitValue = Integer.parseInt(nextLine[1]);
       if (thisPermitValue > permit) {
         permit = thisPermitValue;
+        dateValue = nextLine[4];
       }
     }
   }
   if (permit > 1) {
     ++permit;
-    print("Resuming... permit=" + permit + "; linesRead=" + linesRead);
+    print("Resuming... permit=" + permit + "; linesRead=" + linesRead + "; lastDate=" + dateValue);
   }
   reader.close();
 } else {
@@ -201,11 +205,21 @@ print("");
 CSVWriter writer = new CSVWriter(new FileWriter(csvFile, true), ',');
 
 int counter = 0;
+int finishCount = 0;
 String result = null;
 while (counter < limit) {
   ++counter;
   String result = getNextRecord(writer);
-  if (result != null) {
+  if (result == null) {
+    finishCount = 0;
+  } else {
+    if (skipPastDeletedRecords && result.startsWith("Finished")) {
+      if (finishCount < 30) {
+        print("Skipping missing record...");
+        ++finishCount;
+        continue;
+      }
+    }
     print(result);
     break;
   }
