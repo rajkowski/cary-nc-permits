@@ -18,7 +18,7 @@ import java.net.*;
 void printArgs() {
   print("");
   print("Usage:");
-  print("  scrapeCaryPermits [year(>=1993)|now] <offset:0> <limit:99999>");
+  print("  scrapeCaryPermits [year(>=1992)|now] <offset:0> <limit:99999>");
   print("    - Specify 'now' to use today's date");
   print("    - Data will be appended to data/cary_[year]_permits.csv");
   print("    - Offset 0 will include a header row with column names");
@@ -41,7 +41,7 @@ if (year.equals("now")) {
   skipPastDeletedRecords = false;
   year = String.valueOf(startCal1.get(Calendar.YEAR) + 1);
 }
-if (!StringUtils.hasText(year) || Integer.parseInt(year) < 1993) {
+if (!StringUtils.hasText(year) || Integer.parseInt(year) < 1992) {
   printArgs();
   System.exit(2);
 }
@@ -215,8 +215,9 @@ while (counter < limit) {
   } else {
     if (skipPastDeletedRecords && result.startsWith("Finished")) {
       if (finishCount < 30) {
-        print("Skipping missing record...");
+        print("Skipping missing record... " + permit);
         ++finishCount;
+        ++permit;
         continue;
       }
     }
