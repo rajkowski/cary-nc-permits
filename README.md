@@ -14,7 +14,7 @@ To do: An additional URL is sometimes present with extra data, like mechanical, 
 
 Requires Java 7.
 
-$ sh scrapeCaryPermits.bsh [year(>=1993)|now] <offset:0> <limit:99999>
+$ sh scrapeCaryPermits.bsh [year(>=1992)|now] <offset:0> <limit:99999>
 
 - Specify 'now' to use today's date
 - Data will be appended to data/cary_[year]_permits.csv
