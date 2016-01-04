@@ -40,6 +40,12 @@ String year = bsh.args[0].trim();
 if (year.equals("now")) {
   skipPastDeletedRecords = false;
   year = String.valueOf(startCal1.get(Calendar.YEAR) + 1);
+  // adjust for fiscal year
+  if ((startCal1.get(Calendar.MONTH) + 1) < 7) {
+    year = String.valueOf(startCal1.get(Calendar.YEAR));
+  } else if ((startCal1.get(Calendar.MONTH) + 1) == 7 && startCal1.get(Calendar.DAY_OF_MONTH) <= 16) {
+    year = String.valueOf(startCal1.get(Calendar.YEAR));
+  }
 }
 if (!StringUtils.hasText(year) || Integer.parseInt(year) < 1992) {
   printArgs();
@@ -152,7 +158,7 @@ String getNextRecord(CSVWriter writer) {
     // Append the content
     String[] entries = sb.toString().split("\n", -1);
     writer.writeNext(entries, true);
-    print("[" + entries[0] + "-" + entries[1] + "] " +  entries[4] + " " + entries[3] + " -> " + entries[7] + (StringUtils.hasText(entries[15]) ? " (" + entries[15] + ")" : ""));
+    print("[" + entries[0] + "-" + entries[1] + "] " +  entries[4] + " " + entries[3] + " -> " + entries[7] + (StringUtils.hasText(entries[15]) ? " (" + entries[15] + ")" : "") + " " + entries[8]);
     writer.flush();
 
   } catch (SSLHandshakeException ssle) {
